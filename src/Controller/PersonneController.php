@@ -3,11 +3,15 @@
 namespace App\Controller;
 
 use App\Entity\Personne;
+use App\Form\PersonneType;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\File\Exception\FileException;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\String\Slugger\SluggerInterface;
 
 #[Route('/personne', name: 'app_personne')]
 class PersonneController extends AbstractController
@@ -78,27 +82,83 @@ class PersonneController extends AbstractController
     }
 
     #[Route('/add', name: '.add')]
-    public function addPersonne(ManagerRegistry $doctrine): Response
+    public function addPersonne(Request $request, ManagerRegistry $doctrine): Response
     {
-        $entityManager = $doctrine->getManager();
-
         $personne = new Personne();
-        $personne->setFirstname('Aymen');
-        $personne->setName('Sellaouti');
-        $personne->setAge(39);
 
-//        $personne2 = new Personne();
-//        $personne2->setFirstname('Skander');
-//        $personne2->setName('Sellaouti');
-//        $personne2->setAge(3);
+        $form = $this->createForm(PersonneType::class, $personne);
+//        $form->remove('createdAt');
+//        $form->remove('updateAt');
 
-        $entityManager->persist($personne);
-//        $entityManager->persist($personne2);
-        $entityManager->flush();
+        $form->handleRequest($request);
 
-        return $this->render('personne/detail.html.twig', [
-            'personne'=>$personne
-        ]);
+        if ($form->isSubmitted()) {
+            $manager = $doctrine->getManager();
+            $manager->persist($personne);
+            $manager->flush();
+
+            $this->addFlash('success', $personne->getName().' a été ajouté avec succès');
+
+            return $this->redirectToRoute('app_personne.list');
+        } else {
+            return $this->render('personne/add.html.twig', [
+                'form'=>$form->createView()
+            ]);
+        }
+    }
+
+    #[Route('/edit/{id?0}', name: '.edit')]
+    public function editPersonne(Personne $personne = null, Request $request, ManagerRegistry $doctrine, SluggerInterface $slugger): Response
+    {
+        $new = false;
+        if (!$personne) {
+            $new = true;
+            $personne = new Personne();
+        }
+
+        $form = $this->createForm(PersonneType::class, $personne);
+
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+
+            $photo = $form->get('photo')->getData();
+
+            if ($photo) {
+                $originalFilename = pathinfo($photo->getClientOriginalName(), PATHINFO_FILENAME);
+
+                $safeFilename = $slugger->slug($originalFilename);
+                $newFilename = $safeFilename.'-'.uniqid().'.'.$photo->guessExtension();
+
+                try {
+                    $photo->move(
+                        $this->getParameter('personne_directory'),
+                        $newFilename
+                    );
+                } catch (FileException $e) {
+                    // ... handle exception if something happens during file uploads
+                }
+
+                $personne->setImage($newFilename);
+            }
+
+            $manager = $doctrine->getManager();
+            $manager->persist($personne);
+            $manager->flush();
+
+            if ($new)
+                $message = ' a été ajouté avec succès';
+            else
+                $message = ' a été mis à jour avec succès';
+
+            $this->addFlash('success', $personne->getName().$message);
+
+            return $this->redirectToRoute('app_personne.list');
+        } else {
+            return $this->render('personne/add.html.twig', [
+                'form'=>$form->createView()
+            ]);
+        }
     }
 
     #[Route('/delete/{id}', name: '.delete')]
