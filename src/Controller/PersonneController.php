@@ -4,9 +4,13 @@ namespace App\Controller;
 
 use App\Entity\Personne;
 use App\Form\PersonneType;
+use App\Service\Helpers;
+use App\Service\MailerService;
+use App\Service\PdfService;
+use App\Service\UploaderService;
 use Doctrine\Persistence\ManagerRegistry;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
-use Symfony\Component\HttpFoundation\File\Exception\FileException;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,6 +20,12 @@ use Symfony\Component\String\Slugger\SluggerInterface;
 #[Route('/personne', name: 'app_personne')]
 class PersonneController extends AbstractController
 {
+
+    public function __construct(private LoggerInterface $logger, private Helpers $helpers)
+    {
+
+    }
+
     #[Route('/', name: '.list')]
     public function index(ManagerRegistry $doctrine) : Response {
 
@@ -24,6 +34,16 @@ class PersonneController extends AbstractController
         return $this->render('personne/index.html.twig', [
             'personnes'=>$personnes
         ]);
+    }
+
+    #[Route('/pdf/{id}', name: '.pdf')]
+    public function generatePdfPersonne(Personne $personne = null, PdfService $pdfService) {
+
+        $html = $this->render('personne/detail.html.twig',
+            [
+                'personne'=>$personne
+            ]);
+        $pdfService->showPdfFile($html);
     }
 
     #[Route('/{id<\d+>}', name: '.detail')]
@@ -45,6 +65,8 @@ class PersonneController extends AbstractController
 
     #[Route('/alls/{page?1}/{nbre?12}', name: '.list.alls')]
     public function indexAll(ManagerRegistry $doctrine, $page, $nbre) : Response {
+
+        echo($this->helpers->sayCc());
 
         $repository = $doctrine->getRepository(Personne::class);
         $nbPersonnes = $repository->count([]);
@@ -108,7 +130,13 @@ class PersonneController extends AbstractController
     }
 
     #[Route('/edit/{id?0}', name: '.edit')]
-    public function editPersonne(Personne $personne = null, Request $request, ManagerRegistry $doctrine, SluggerInterface $slugger): Response
+    public function editPersonne(
+            UploaderService $uploader,
+            Personne $personne = null,
+            Request $request,
+            ManagerRegistry $doctrine,
+            MailerService $mailer
+        ): Response
     {
         $new = false;
         if (!$personne) {
@@ -125,33 +153,25 @@ class PersonneController extends AbstractController
             $photo = $form->get('photo')->getData();
 
             if ($photo) {
-                $originalFilename = pathinfo($photo->getClientOriginalName(), PATHINFO_FILENAME);
+                $directory = $this->getParameter('personne_directory');
 
-                $safeFilename = $slugger->slug($originalFilename);
-                $newFilename = $safeFilename.'-'.uniqid().'.'.$photo->guessExtension();
-
-                try {
-                    $photo->move(
-                        $this->getParameter('personne_directory'),
-                        $newFilename
-                    );
-                } catch (FileException $e) {
-                    // ... handle exception if something happens during file uploads
-                }
-
-                $personne->setImage($newFilename);
+                $personne->setImage($uploader->uploadFile($photo, $directory));
             }
 
             $manager = $doctrine->getManager();
             $manager->persist($personne);
             $manager->flush();
 
-            if ($new)
+            if ($new) {
                 $message = ' a été ajouté avec succès';
+            }
             else
                 $message = ' a été mis à jour avec succès';
 
+//            $emailMessage = $personne->getFirstname().' '.$personne->getName().$message;
+
             $this->addFlash('success', $personne->getName().$message);
+//            $mailer->sendEmail(content: $emailMessage);
 
             return $this->redirectToRoute('app_personne.list');
         } else {
