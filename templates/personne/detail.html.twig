@@ -4,6 +4,9 @@
     <div class="alert alert-success">
         {{ personne.firstname }} {{ personne.name }} : {{ personne.age }} ans
     </div>
+    {% if personne.createdBy %}
+        <p>Created by : {{ personne.createdBy.email }}</p>
+    {% endif %}
 {% endblock %}
 
 {% block title %}

@@ -15,9 +15,10 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
-use Symfony\Component\String\Slugger\SluggerInterface;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[Route('/personne', name: 'app_personne')]
+#[IsGranted("ROLE_USER")]
 class PersonneController extends AbstractController
 {
 
@@ -64,9 +65,10 @@ class PersonneController extends AbstractController
     }
 
     #[Route('/alls/{page?1}/{nbre?12}', name: '.list.alls')]
+    #[IsGranted("ROLE_USER")]
     public function indexAll(ManagerRegistry $doctrine, $page, $nbre) : Response {
 
-        echo($this->helpers->sayCc());
+//        echo($this->helpers->sayCc());
 
         $repository = $doctrine->getRepository(Personne::class);
         $nbPersonnes = $repository->count([]);
@@ -130,6 +132,7 @@ class PersonneController extends AbstractController
     }
 
     #[Route('/edit/{id?0}', name: '.edit')]
+//    #[IsGranted("ROLE_ADMIN")]
     public function editPersonne(
             UploaderService $uploader,
             Personne $personne = null,
@@ -138,6 +141,7 @@ class PersonneController extends AbstractController
             MailerService $mailer
         ): Response
     {
+        $this->denyAccessUnlessGranted("ROLE_ADMIN");
         $new = false;
         if (!$personne) {
             $new = true;
@@ -158,15 +162,18 @@ class PersonneController extends AbstractController
                 $personne->setImage($uploader->uploadFile($photo, $directory));
             }
 
+            if ($new) {
+                $message = ' a été ajouté avec succès';
+                $personne->setCreatedBy($this->getUser());
+            }
+            else
+                $message = ' a été mis à jour avec succès';
+
             $manager = $doctrine->getManager();
             $manager->persist($personne);
             $manager->flush();
 
-            if ($new) {
-                $message = ' a été ajouté avec succès';
-            }
-            else
-                $message = ' a été mis à jour avec succès';
+
 
 //            $emailMessage = $personne->getFirstname().' '.$personne->getName().$message;
 
@@ -182,6 +189,7 @@ class PersonneController extends AbstractController
     }
 
     #[Route('/delete/{id}', name: '.delete')]
+    #[IsGranted("ROLE_ADMIN")]
     public function deletePersonne(Personne $personne = null, ManagerRegistry $doctrine) : RedirectResponse
     {
         if ($personne) {
