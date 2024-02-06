@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Entity\Personne;
+use App\Event\AddPersonneEvent;
 use App\Form\PersonneType;
 use App\Service\Helpers;
 use App\Service\MailerService;
@@ -16,13 +17,18 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 #[Route('/personne', name: 'app_personne')]
 #[IsGranted("ROLE_USER")]
 class PersonneController extends AbstractController
 {
 
-    public function __construct(private LoggerInterface $logger, private Helpers $helpers)
+    public function __construct(
+            private EventDispatcherInterface $eventDispatcher,
+            private LoggerInterface $logger,
+            private Helpers $helpers
+        )
     {
 
     }
@@ -173,7 +179,12 @@ class PersonneController extends AbstractController
             $manager->persist($personne);
             $manager->flush();
 
-
+            if ($new) {
+                // Création de l'évènement
+                $addPersonneEvent = new AddPersonneEvent($personne);
+                // Dispatch évènement
+                $this->eventDispatcher->dispatch($addPersonneEvent, AddPersonneEvent::ADD_PERSONNE_EVENT);
+            }
 
 //            $emailMessage = $personne->getFirstname().' '.$personne->getName().$message;
 
