@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Entity\Personne;
 use App\Event\AddPersonneEvent;
+use App\Event\ListAllPersonneEvent;
 use App\Form\PersonneType;
 use App\Service\Helpers;
 use App\Service\MailerService;
@@ -78,6 +79,12 @@ class PersonneController extends AbstractController
 
         $repository = $doctrine->getRepository(Personne::class);
         $nbPersonnes = $repository->count([]);
+
+        // Création de l'évènement
+        $listAllPersonneEvent = new ListAllPersonneEvent($nbPersonnes);
+        // Dispatch évènement
+        $this->eventDispatcher->dispatch($listAllPersonneEvent, ListAllPersonneEvent::LIST_ALLS_PERSONNE_EVENT);
+
         $personnes = $repository->findBy([], [],$nbre,($page-1)*$nbre);
         $nbrePages = ceil($nbPersonnes/$nbre);
         return $this->render('personne/index.html.twig', [
@@ -186,10 +193,7 @@ class PersonneController extends AbstractController
                 $this->eventDispatcher->dispatch($addPersonneEvent, AddPersonneEvent::ADD_PERSONNE_EVENT);
             }
 
-//            $emailMessage = $personne->getFirstname().' '.$personne->getName().$message;
-
             $this->addFlash('success', $personne->getName().$message);
-//            $mailer->sendEmail(content: $emailMessage);
 
             return $this->redirectToRoute('app_personne.list');
         } else {
